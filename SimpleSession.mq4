@@ -3,24 +3,29 @@
 //|                                     Copyright 2022, Ahmad Thahir |
 //|                                             https://www.mql5.com |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2022, Ahmad Thahir"
-#property link      "https://www.mql5.com"
-#property version   "1.0"
-string v="1.0";
-#property strict
+#property   copyright "Copyright 2022, Ahmad Thahir"
+#property   link      "https://www.mql5.com"
+#property   version   "1.0"
+string      v="1.0";
+#property   strict
 
 /**
 * Input Parameter
 */
-extern double lot_size=0.01;
-extern bool Open_Sell=true;
-extern bool Open_Buy=true;
-extern bool do_monitoring=true;
-extern bool auto_restart=false;
+extern string     GENERAL="#######################";
+extern double     lot_size=0.01;
+extern bool       Open_Sell=true;
+extern bool       Open_Buy=true;
+extern int        max_spread=40;
+extern bool       do_monitoring=true;
+extern bool       terminal_close_on_rto=false;
 
 //CHECK TIME SESSION
-extern int hour_session_start=0;
-extern int hour_session_end=0;
+extern int        hour_session_start=0;
+extern int        hour_session_end=0;
+
+extern string     ETC="#######################";
+extern int        rto_close_delay=20;
 
 int      calp;
 double   pt;
@@ -98,14 +103,110 @@ void OnTimer() {
 }
       
 void RunRobot() {
-   //
+
+   datetime gmtTime = TimeGMT();
+   datetime localTime = TimeLocal();
+   datetime serverTime = TimeCurrent();
+   int      gapTime = gmtTime - serverTime;
+   int      localHour = TimeHour(localTime); 
+   int      localMinute = TimeMinute(localTime);
+   int      localSecond = TimeSeconds(localTime);
+   int      serverMinute = Minute();
+   int      serverSecond = Seconds();
+   double   spread = MarketInfo(Symbol(), MODE_SPREAD);
+   
+   Comment (
+      "+++++++++++++++++++++++++++"
+      + "\nVersion  : " + v
+      + "\nLot Size : " + DoubleToString(lot_size,2)
+      + "\n+++++++++++++++++++++++++++"
+   );
+   
+   if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
+   holidayReminded=isHoliday(gmtTime);
+   if (holidayReminded) return; 
+   if (spread>max_spread) return;
+   if ((gmtTime - serverTime)>60) return;
+   
+   /*
+   {
+      check time to start trading
+   }
+   */
+   
+   
+   
 }
 
+/**
+ * return true when it's a holiday and send notification
+ */
+bool holidayReminded=false;
+bool isHoliday (datetime t) {
+   string msg="";
+   if (((TimeDayOfWeek(t)==5 && (TimeHour(t)>20 && TimeHour(t)<=23)) ||
+         (TimeDayOfWeek(t)==6) ||
+         (TimeDayOfWeek(t)==0 && TimeHour(t)<=22))) {
+      if (!holidayReminded) {
+         msg="Liburan bosss....";
+         Print(msg);
+         SendNotification(msg);
+         return true;
+      }
+   }
+   return false;
+}
+
+/**
+ * return true
+ */
+bool rtoReminded=false;
+bool conReminded=false;
+bool isRtoReminded (datetime gt, datetime st, datetime lt) {
+   int gaptime = (gt - st);
+   string msg="";
+   int max_gap_time;
+   if (TimeHour(gt)>=20 && TimeHour(gt)<=23) {
+      max_gap_time=300;
+   } else {
+      max_gap_time=100;
+   }
+   if (gaptime>=max_gap_time && !rtoReminded) {
+      msg="WARNING!! max_gap_time : " + IntegerToString(max_gap_time) + ", now is : " + IntegerToString(lt) + " , close terminal in " + IntegerToString(restartIn) + " detik";
+      Print(msg);
+      SendNotification(msg);
+      rtoReminded=true;
+      conReminded=false;
+      return true;
+   } else if (gaptime<max_gap_time && !conReminded) {
+      msg= "V:" + v + ", tick tock.., last tick : " + IntegerToString(st);
+      Print(msg);
+      SendNotification(msg);
+      conReminded=true;
+      rtoReminded=false;
+   }
+   return false;
+}
+
+/**
+ * Close terminal when there's no ticks in 
+ */
+int restartIn=rto_close_delay;
+bool closeOnRTO (bool rto_reminded) {
+   if (rto_reminded) {
+      restartIn--;
+      if (restartIn==0) {
+         if (terminal_close_on_rto) TerminalClose(100);
+      }
+      return true;
+   }
+   
+   restartIn=rto_close_delay;
+   return false;
+}
 
 /**
  * Return true if there is an order opened
- *
- * 
  */
 bool isPositionOpened() {
    bool result=true;
