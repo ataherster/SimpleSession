@@ -16,13 +16,20 @@ extern string     GENERAL="#######################";
 extern double     lot_size=0.01;
 extern bool       Open_Sell=true;
 extern bool       Open_Buy=true;
+extern bool       OPM15=true;
+extern bool       OPM30=true;
+extern bool       OPM60=true;
 extern int        max_spread=40;
 extern bool       do_monitoring=true;
 extern bool       terminal_close_on_rto=false;
+extern string     SL_TP_ORDER_PROPS="#######################";
+extern bool       open_sl_tp_order=true;
 
 //CHECK TIME SESSION
 extern int        hour_session_start=0;
-extern int        hour_session_end=0;
+extern int        hour_session_end=7;
+extern int        start_trading_hour=8;
+extern int        end_trading_hour=0;
 
 extern string     ETC="#######################";
 extern int        rto_close_delay=20;
@@ -102,10 +109,11 @@ void OnTimer() {
    RunRobot();
 }
       
+int runningLocalSecond=0;
 void RunRobot() {
 
    datetime gmtTime = TimeGMT();
-   datetime localTime = TimeLocal();
+   datetime localTime = TimeLocal(); //Please ensure the Operating System (Windows or Linux) to use GMT Time
    datetime serverTime = TimeCurrent();
    int      gapTime = gmtTime - serverTime;
    int      localHour = TimeHour(localTime); 
@@ -117,25 +125,77 @@ void RunRobot() {
    
    Comment (
       "+++++++++++++++++++++++++++"
-      + "\nVersion  : " + v
+      + "\nVersion  : Simple Trading Session" + v
       + "\nLot Size : " + DoubleToString(lot_size,2)
       + "\n+++++++++++++++++++++++++++"
    );
    
-   if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
    holidayReminded=isHoliday(gmtTime);
    if (holidayReminded) return; 
+   if (start_trading_hour>0 && localHour<start_trading_hour) return;
+   if (end_trading_hour>0 && localHour>end_trading_hour) return;
+   
+   if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
    if (spread>max_spread) return;
-   if ((gmtTime - serverTime)>60) return;
+   if (gapTime>60) return;
    
-   /*
-   {
-      check time to start trading
+   if (IsTesting()) {runningLocalSecond=48;} else {runningLocalSecond=55;}
+   
+   if (localSecond<2) {
+      orderOpened[PERIOD_M15]=false;
+      orderOpened[PERIOD_M30]=false;
+      orderOpened[PERIOD_H1]=false; 
    }
-   */
    
+   int exeRecomendation=getExecutionRecomentation();
+   if (exeRecomendation<=0) return;
    
+   if (((localMinute==14 || localMinute==44) && localSecond>=runningLocalSecond)) {
+      if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+   }
+   if ((localMinute==29 && localSecond>=runningLocalSecond)) {
+      if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(exeRecomendation, PERIOD_M30);
+      if (!orderOpened[PERIOD_M30]) {
+         if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+      }                                                    
+      
+   }
+   if ((localMinute==59 && localSecond>=runningLocalSecond)) {
+      if (!orderOpened[PERIOD_H1] && OPM60) orderOpened[PERIOD_H1]=openPosition(exeRecomendation, PERIOD_H1);
+      
+      if (!orderOpened[PERIOD_H1]) {
+         if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(exeRecomendation, PERIOD_M30);
+         
+         if (!orderOpened[PERIOD_M15]) {
+            if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+         }
+         
+      }
+   }
    
+}
+
+/**
+ * Return true, when the execution of order is success
+ */
+int orderOpened[61]; //[15] for PERIOD_M15 ; [30] for PERIOD_M30 ; [60] for PERIOD_H1 ;
+int SL_TP_ORDER=1; 
+bool openPosition(int orderType, int TimeFrame) {
+   bool result=false;
+   
+   return result;
+}
+
+/**
+ * Return Order Properties :
+ * -1           No Recomendation
+ *  0 OP_BUY    Buy operation
+ *  1 OP_SELL   Sell operation
+ */
+int getExecutionRecomentation () {
+   int result=-1;
+   
+   return result;
 }
 
 /**
@@ -172,7 +232,7 @@ bool isRtoReminded (datetime gt, datetime st, datetime lt) {
       max_gap_time=100;
    }
    if (gaptime>=max_gap_time && !rtoReminded) {
-      msg="WARNING!! max_gap_time : " + IntegerToString(max_gap_time) + ", now is : " + IntegerToString(lt) + " , close terminal in " + IntegerToString(restartIn) + " detik";
+      msg="WARNING!! max_gap_time : " + IntegerToString(max_gap_time) + ", now is : " + IntegerToString(lt) + " , close terminal in " + IntegerToString(closeIn) + " detik";
       Print(msg);
       SendNotification(msg);
       rtoReminded=true;
@@ -191,28 +251,37 @@ bool isRtoReminded (datetime gt, datetime st, datetime lt) {
 /**
  * Close terminal when there's no ticks in 
  */
-int restartIn=rto_close_delay;
+int closeIn=rto_close_delay;
 bool closeOnRTO (bool rto_reminded) {
    if (rto_reminded) {
-      restartIn--;
-      if (restartIn==0) {
+      closeIn--;
+      if (closeIn==0) {
          if (terminal_close_on_rto) TerminalClose(100);
       }
       return true;
    }
    
-   restartIn=rto_close_delay;
+   closeIn=rto_close_delay;
    return false;
 }
 
 /**
- * Return true if there is an order opened
+ * Return true if there is an active order
  */
-bool isPositionOpened() {
+bool isActiveOrderExist() {
    bool result=true;
    //select order only from the same day
    
    //return true if there is an order opened
+   return result;
+}
+
+/**
+ * Return true if there is an opened order in hisory in the same date
+ */
+bool isOrderOpenedTheSameDateExist (datetime Today) {
+   bool result=true;
+   
    return result;
 }
 
