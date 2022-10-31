@@ -21,18 +21,19 @@ extern bool       OPM30=true;
 extern bool       OPM60=true;
 extern int        max_spread=40;
 extern bool       do_monitoring=true;
-extern bool       terminal_close_on_rto=false;
+
 extern string     SL_TP_ORDER_PROPS="#######################";
 extern bool       open_sl_tp_order=true;
 
-//CHECK TIME SESSION
+extern string     HOUR_SETTINGS="#######################";
 extern int        hour_session_start=0;
 extern int        hour_session_end=7;
-extern int        start_trading_hour=8;
-extern int        end_trading_hour=0;
+extern int        hour_start_trading=8;
+extern int        hour_end_trading=0;
 
 extern string     ETC="#######################";
 extern int        rto_close_delay=20;
+extern bool       terminal_close_on_rto=false;
 
 int      calp;
 double   pt;
@@ -132,8 +133,8 @@ void RunRobot() {
    
    holidayReminded=isHoliday(gmtTime);
    if (holidayReminded) return; 
-   if (start_trading_hour>0 && localHour<start_trading_hour) return;
-   if (end_trading_hour>0 && localHour>end_trading_hour) return;
+   if (hour_start_trading>0 && localHour<hour_start_trading) return;
+   if (hour_end_trading>0 && localHour>hour_end_trading) return;
    
    if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
    if (spread>max_spread) return;
@@ -286,9 +287,16 @@ bool isOrderOpenedTheSameDateExist (datetime Today) {
 }
 
 /**
+ * Set the highest and lowest value to the input parameters
+ */
+void setHighestAndLowest (int startHour, int endHour, double &highest, double &lowest) {
+   
+}
+
+/**
  * Get highest value from session
  */
-int getHighest () {
+int getHighest (int startHour, int endHour) {
    int result=0;
    //Code to return highest price 
    return result;
@@ -297,7 +305,7 @@ int getHighest () {
 /**
  * Get lowest value from session
  */
-int getLowest () {
+int getLowest (int startHour, int endHour) {
    int result=0;
    //Code to return lowest price
    return result;
