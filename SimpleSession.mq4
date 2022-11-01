@@ -41,6 +41,8 @@ double   minlot;
 double   stoplevel;
 int      prec=0;
 
+int orderType=-1;
+
 /**
  * The Init event is generated immediately after an Expert Advisor or an indicator is downloaded; The OnInit() function is used for initialization. 
  * If OnInit() has the int type of the return value, the non-zero return code means unsuccessful initialization, 
@@ -68,17 +70,22 @@ int OnInit() {
    
    //start handle EventSetTimer(1)
    int count=0;
-   bool timerset=false;      
-   while(!timerset && count<5) {
-      timerset=EventSetTimer(1);
-      if(!timerset){
-         printf("Cannot set timer, error %s. Set trying %d...",(string)_LastError,count);
-         EventKillTimer();
-         Sleep(200);
+   bool timerset=false;   
+   if (!IsTesting()) {
+      while(!timerset && count<5) {
          timerset=EventSetTimer(1);
-         count++;
-      }   
-   }
+         if(!timerset){
+            printf("Cannot set timer, error %s. Set trying %d...",(string)_LastError,count);
+            EventKillTimer();
+            Sleep(200);
+            timerset=EventSetTimer(1);
+            count++;
+         }   
+      }
+   }  else {
+      timerset=true;
+   }  
+   
    if(!timerset){
       Alert("Cannot set timer");
       return INIT_FAILED;
@@ -123,52 +130,82 @@ void RunRobot() {
    int      serverMinute = Minute();
    int      serverSecond = Seconds();
    double   spread = MarketInfo(Symbol(), MODE_SPREAD);
+   bool     orderOpenedTheSameDateExist=NULL;
    
    Comment (
       "+++++++++++++++++++++++++++"
-      + "\nVersion  : Simple Trading Session" + v
+      + "\nVersion  : Simple Session " + v
       + "\nLot Size : " + DoubleToString(lot_size,2)
-      + "\n+++++++++++++++++++++++++++"
+      + "\n+++++++++++++++++++++++++++" 
+      + "\nH Price : " + highestPrice
+      + "\nL Price : " + lowestPrice
+      + "\nOrder Type " + orderType
+      + "\nLocal Minute : " + localMinute + ":" + localSecond + " RUnning : " + runningLocalSecond
    );
-   
-   holidayReminded=isHoliday(gmtTime);
-   if (holidayReminded) return; 
-   if (hour_start_trading>0 && localHour<hour_start_trading) return;
-   if (hour_end_trading>0 && localHour>hour_end_trading) return;
-   
-   if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
-   if (spread>max_spread) return;
-   if (gapTime>60) return;
-   
-   if (IsTesting()) {runningLocalSecond=48;} else {runningLocalSecond=55;}
    
    if (localSecond<2) {
       orderOpened[PERIOD_M15]=false;
       orderOpened[PERIOD_M30]=false;
-      orderOpened[PERIOD_H1]=false; 
+      orderOpened[PERIOD_H1]=false;
    }
    
-   int exeRecomendation=getExecutionRecomentation();
-   if (exeRecomendation<=0) return;
+   if (isHoliday(localTime)) {
+      if (!holidayReminded) {
+         string msg="";
+         msg="Liburan bosss....";
+         Print(msg);
+         SendNotification(msg);
+         holidayReminded=true;
+      }
+      return;
+   }
+   holidayReminded=false;
    
+   if (hour_start_trading>0 && localHour<hour_start_trading) return;
+   if (hour_end_trading>0 && localHour>hour_end_trading) return;
+ 
+   //if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
+   if (spread>max_spread) return;
+   if (gapTime>60) return;
+   
+   
+   
+   if ((localMinute==13 || localMinute==28 || localMinute==43 || localMinute==58)) {
+      if (localSecond<2) {
+         if (orderOpenedTheSameDateExist) orderOpenedTheSameDateExist=NULL;
+         if (highestPrice!=0) highestPrice=0;
+         if (lowestPrice!=0) lowestPrice=0;
+         if (orderType!=-1) orderType=-1;
+      } else if (localSecond>=2) {
+         if (orderOpenedTheSameDateExist==NULL) orderOpenedTheSameDateExist=isOrderOpenedTheSameDateExist(localTime);
+         if (highestPrice==0 || lowestPrice==0) setHighestAndLowest(localTime, hour_session_start, hour_session_end, highestPrice, lowestPrice);
+         if (orderOpenedTheSameDateExist) return;
+         if (orderType==-1) orderType = getExecutionRecomentation(highestPrice, lowestPrice);
+         if (orderType==-1) return;
+      } 
+   }
+   
+   runningLocalSecond = (IsTesting()) ? 38 : 55 ;
+   if (localMinute==14 || localMinute==44) Print ("sama ini bos "); //#########################################################################################
    if (((localMinute==14 || localMinute==44) && localSecond>=runningLocalSecond)) {
-      if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+      Print ("orderan boss");
+      if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(orderType, PERIOD_M15);
    }
    if ((localMinute==29 && localSecond>=runningLocalSecond)) {
-      if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(exeRecomendation, PERIOD_M30);
+      if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(orderType, PERIOD_M30);
       if (!orderOpened[PERIOD_M30]) {
-         if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+         if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(orderType, PERIOD_M15);
       }                                                    
       
    }
    if ((localMinute==59 && localSecond>=runningLocalSecond)) {
-      if (!orderOpened[PERIOD_H1] && OPM60) orderOpened[PERIOD_H1]=openPosition(exeRecomendation, PERIOD_H1);
+      if (!orderOpened[PERIOD_H1] && OPM60) orderOpened[PERIOD_H1]=openPosition(orderType, PERIOD_H1);
       
       if (!orderOpened[PERIOD_H1]) {
-         if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(exeRecomendation, PERIOD_M30);
+         if (!orderOpened[PERIOD_M30] && OPM30) orderOpened[PERIOD_M30]=openPosition(orderType, PERIOD_M30);
          
          if (!orderOpened[PERIOD_M15]) {
-            if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(exeRecomendation, PERIOD_M15);
+            if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(orderType, PERIOD_M15);
          }
          
       }
@@ -184,6 +221,9 @@ int SL_TP_ORDER=1;
 bool openPosition(int orderType, int TimeFrame) {
    bool result=false;
    
+   //test open order;
+   Print("Open : " + orderType + ", TimeFrame : " + TimeFrame);
+   
    return result;
 }
 
@@ -193,9 +233,14 @@ bool openPosition(int orderType, int TimeFrame) {
  *  0 OP_BUY    Buy operation
  *  1 OP_SELL   Sell operation
  */
-int getExecutionRecomentation () {
+int getExecutionRecomentation (double highest, double lowest) {
    int result=-1;
-   
+   double close=iClose(NULL, PERIOD_M15, 0);
+   if (close>highest) {
+      return OP_BUY;
+   } else if (close<lowest) {
+      return OP_SELL;
+   }
    return result;
 }
 
@@ -204,16 +249,10 @@ int getExecutionRecomentation () {
  */
 bool holidayReminded=false;
 bool isHoliday (datetime t) {
-   string msg="";
    if (((TimeDayOfWeek(t)==5 && (TimeHour(t)>20 && TimeHour(t)<=23)) ||
          (TimeDayOfWeek(t)==6) ||
          (TimeDayOfWeek(t)==0 && TimeHour(t)<=22))) {
-      if (!holidayReminded) {
-         msg="Liburan bosss....";
-         Print(msg);
-         SendNotification(msg);
          return true;
-      }
    }
    return false;
 }
@@ -269,8 +308,9 @@ bool closeOnRTO (bool rto_reminded) {
 /**
  * Return true if there is an active order
  */
+//@Deprecated
 bool isActiveOrderExist() {
-   bool result=true;
+   bool result=false;
    //select order only from the same day
    
    //return true if there is an order opened
@@ -281,7 +321,25 @@ bool isActiveOrderExist() {
  * Return true if there is an opened order in hisory in the same date
  */
 bool isOrderOpenedTheSameDateExist (datetime Today) {
-   bool result=true;
+   bool result=false;
+   
+   //Check open - opened order that it's in the same date
+   for (int i=0; i<OrdersTotal(); i++) {
+      OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
+      if (OrderMagicNumber()==0)continue;
+      string nowDate    =TimeToString(Today, TIME_DATE);
+      string orderDate  =TimeToString(OrderOpenTime(), TIME_DATE);
+      if (nowDate==orderDate) return true;
+   }
+   
+   //Check closed order that it's in the same date
+   for (int i=0; i<OrdersHistoryTotal(); i++) {
+      OrderSelect(i, SELECT_BY_POS, MODE_TRADES);
+      if (OrderMagicNumber()==0)continue;
+      string nowDate    =TimeToString(Today, TIME_DATE);
+      string orderDate  =TimeToString(OrderOpenTime(), TIME_DATE);
+      if (nowDate==orderDate) return true;
+   }
    
    return result;
 }
@@ -289,13 +347,27 @@ bool isOrderOpenedTheSameDateExist (datetime Today) {
 /**
  * Set the highest and lowest value to the input parameters
  */
-void setHighestAndLowest (int startHour, int endHour, double &highest, double &lowest) {
+double highestPrice=0;
+double lowestPrice=0;
+void setHighestAndLowest (datetime today, int startSessionHour, int endSessionHour, double &highest, double &lowest) {
+   datetime todayStartSession =  StrToTime(IntegerToString(TimeYear(today)) + "." + IntegerToString(TimeMonth(today)) + 
+                                 "." + IntegerToString(TimeDay(today)) + " " + IntegerToString(startSessionHour) + ":00");
+   datetime todayEndSession   =  StrToTime(IntegerToString(TimeYear(today)) + "." + IntegerToString(TimeMonth(today)) + "." + 
+                                 IntegerToString(TimeDay(today)) + " " + IntegerToString(endSessionHour) + ":00");
    
+   int      startShift=iBarShift(NULL,PERIOD_H1,todayStartSession);
+   int      endShift=iBarShift(NULL,PERIOD_H1,todayEndSession);
+   int      highestIndex=iHighest(NULL,PERIOD_H1,MODE_HIGH,startShift-endShift,endShift);
+   int      lowestIndex=iLowest(NULL,PERIOD_H1,MODE_LOW,startShift-endShift,endShift);
+   
+   if (highestIndex!=-1) highest=iHigh(NULL, PERIOD_H1, highestIndex);
+   if (lowestIndex!=-1) lowest=iLow(NULL, PERIOD_H1, lowestIndex);
 }
 
 /**
  * Get highest value from session
  */
+//@Deprecated
 int getHighest (int startHour, int endHour) {
    int result=0;
    //Code to return highest price 
@@ -305,6 +377,7 @@ int getHighest (int startHour, int endHour) {
 /**
  * Get lowest value from session
  */
+//@Deprecated
 int getLowest (int startHour, int endHour) {
    int result=0;
    //Code to return lowest price
