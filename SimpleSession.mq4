@@ -132,6 +132,7 @@ void RunRobot() {
    double   spread = MarketInfo(Symbol(), MODE_SPREAD);
    bool     orderOpenedTheSameDateExist=NULL;
    
+   if (localMinute==13 || localMinute==28 || localMinute==43 || localMinute==58) Print("localMinute: " + localMinute);
    Comment (
       "+++++++++++++++++++++++++++"
       + "\nVersion  : Simple Session " + v
@@ -142,6 +143,7 @@ void RunRobot() {
       + "\nOrder Type " + orderType
       + "\nLocal Minute : " + localMinute + ":" + localSecond + " RUnning : " + runningLocalSecond
    );
+   
    
    if (localSecond<2) {
       orderOpened[PERIOD_M15]=false;
@@ -161,14 +163,13 @@ void RunRobot() {
    }
    holidayReminded=false;
    
+   //Print("1. Sebelum trading time filters, localMinute:" + localMinute);
    if (hour_start_trading>0 && localHour<hour_start_trading) return;
    if (hour_end_trading>0 && localHour>hour_end_trading) return;
  
    //if (closeOnRTO(isRtoReminded(gmtTime, serverTime, localTime))) return;
    if (spread>max_spread) return;
    if (gapTime>60) return;
-   
-   
    
    if ((localMinute==13 || localMinute==28 || localMinute==43 || localMinute==58)) {
       if (localSecond<2) {
@@ -186,7 +187,8 @@ void RunRobot() {
    }
    
    runningLocalSecond = (IsTesting()) ? 38 : 55 ;
-   if (localMinute==14 || localMinute==44) Print ("sama ini bos "); //#########################################################################################
+   //Print("2. Setelah runningLocalSecond, localMinute:" + localMinute);
+   if (localMinute==14 || localMinute==44) Print ("sama ini bos ");
    if (((localMinute==14 || localMinute==44) && localSecond>=runningLocalSecond)) {
       Print ("orderan boss");
       if (!orderOpened[PERIOD_M15] && OPM15) orderOpened[PERIOD_M15]=openPosition(orderType, PERIOD_M15);
@@ -237,10 +239,11 @@ int getExecutionRecomentation (double highest, double lowest) {
    int result=-1;
    double close=iClose(NULL, PERIOD_M15, 0);
    if (close>highest) {
-      return OP_BUY;
+      result = OP_BUY;
    } else if (close<lowest) {
-      return OP_SELL;
+      result = OP_SELL;
    }
+   //Print("getExecutionRecomentation => " + result);
    return result;
 }
 
@@ -329,7 +332,7 @@ bool isOrderOpenedTheSameDateExist (datetime Today) {
       if (OrderMagicNumber()==0)continue;
       string nowDate    =TimeToString(Today, TIME_DATE);
       string orderDate  =TimeToString(OrderOpenTime(), TIME_DATE);
-      if (nowDate==orderDate) return true;
+      if (nowDate==orderDate) {Print("1. op same date : " + true );return true;}
    }
    
    //Check closed order that it's in the same date
@@ -338,9 +341,9 @@ bool isOrderOpenedTheSameDateExist (datetime Today) {
       if (OrderMagicNumber()==0)continue;
       string nowDate    =TimeToString(Today, TIME_DATE);
       string orderDate  =TimeToString(OrderOpenTime(), TIME_DATE);
-      if (nowDate==orderDate) return true;
+      if (nowDate==orderDate) {Print("2. op same date : " + true);return true;}
    }
-   
+   //Print("3. op same date : " + result);
    return result;
 }
 
